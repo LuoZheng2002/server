@@ -10,7 +10,6 @@
   },
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "socket.io": "^4.7.5"
   },
@@ -18,5 +17,6 @@
     "@types/node": "^20.14.12",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
-  }
+  },
+  "type": "module"
 }

@@ -1,11 +1,19 @@
 import { randomInt } from "crypto";
-import { Player } from "./player";
+import { Player } from "./player.js";
 import { assert } from "console";
+
+const START_COUNTDOWN = 10;
+const ANSWER_COUNTDOWN = 15;
+const TRANSITION_COUNTDOWN = 2;
+const RESULT_COUNTDOWN = 1;
+const ADDITION_COUNTDOWN = 1;
+const NEWSCORE_COUNTDOWN = 1;
+const NUM_QUESTIONS = 5;
 
 
 export class Room {
     static nextID = 0;
-    static numQuestions = 5;
+    static numQuestions = NUM_QUESTIONS;
     static rooms = new Map();
     id: number;
     player1: Player;
@@ -90,6 +98,8 @@ export class Room {
          this.cleanup();
     }
     private goToNext() {
+        assert(this, "this is undefined");
+        assert(this.currentQuestionIdx, "currentQuestionIdx is undefined");
         if (this.currentQuestionIdx == Room.numQuestions) {
             this.goToGameOver();
         }
@@ -99,20 +109,25 @@ export class Room {
     }
     private startCountdown(){
         this.timerActive = true;
-        this.countdown(10, this.goToNext);
+        this.countdown(START_COUNTDOWN, ()=>{this.goToProblem()});
     }
     private goToStart(){
-        this.sendToBoth({state: 'countdown'});
+        this.player1.score = 0;
+        this.player2.score = 0;
+        this.sendToBoth({state: 'countdown', room: this.id});
+        this.sendToBoth({ myscore: 0, opponentscore: 0, addition: ''});
+        this.player1.socket.emit('message', {name: this.player1.name, opponent: this.player2.name});
+        this.player2.socket.emit('message', {name: this.player2.name, opponent: this.player1.name});
         this.startCountdown();
     }
     private problemCountdown(){
         this.timerActive = true;
-        this.countdown(10, this.goToNext);
+        this.countdown(ANSWER_COUNTDOWN, ()=>{this.goToNext()});
     }
     private goToProblem(){
         this.createProblem();
         this.state = 'answering';
-        this.sendToBoth({state: 'ingame', problem: this.currentProblem, questionnum: this.currentQuestionIdx});
+        this.sendToBoth({state: 'game', problem: this.currentProblem, questionnum: this.currentQuestionIdx});
         this.problemCountdown();
     }
     private displayCountdown(time: number){
@@ -122,20 +137,23 @@ export class Room {
     private countdown(time: number, func: ()=>void){
         if (!this.timerActive)
         {
+            console.log('timer interrupted');
             return;
         }
         if (time <=0){
             this.displayCountdown(time);
+            console.log(time);
             func();
             return;
         }
         this.displayCountdown(time);
+        console.log(time);
         setTimeout(()=>{this.countdown(time - 1, func)}, 1000);
     }
 
     private transitionCountdown(){
         this.timerActive = true;
-        this.countdown(3, this.goToProblem);
+        this.countdown(TRANSITION_COUNTDOWN, ()=>{this.goToProblem()});
     }
     private goToTransition() {
         this.currentQuestionIdx++;
@@ -165,23 +183,21 @@ export class Room {
                 currPlayer.socket.emit('message', { answerer: true, answer: answer, correct: false });
                 otherPlayer.socket.emit('message', { answerer: false, answer: answer, correct: false });
             }
-            
+            this.sendToBoth({state: 'result'});
             // display the addition after 1 second
             let addition = correct ? "+1" : "-5";
             let newScore = correct ? currPlayer.score + 1 : currPlayer.score - 5;
             setTimeout(() => {
-                currPlayer.socket.emit('message', { modifyself: true, addition: addition });
-                otherPlayer.socket.emit('message', { modifyself: false, addition: addition });
+                this.sendToBoth({ addition: addition });
                 setTimeout(() => {
-                    currPlayer.socket.emit('message', { modifyself: true, newScore: newScore });
-                    otherPlayer.socket.emit('message', { modifyself: false, newScore: newScore });
                     currPlayer.score = newScore;
+                    currPlayer.socket.emit('message', { myscore: currPlayer.score, opponentscore: otherPlayer.score, addition: ''});
+                    otherPlayer.socket.emit('message', { myscore: otherPlayer.score, opponentscore: currPlayer.score, addition: ''});
                     setTimeout(() => {
                         this.goToNext();
-
-                    }, 2000);
-                }, 2000);
-            }, 1000);
+                    }, NEWSCORE_COUNTDOWN * 1000);
+                }, ADDITION_COUNTDOWN * 1000);
+            }, RESULT_COUNTDOWN * 1000);
         }
         else {
             console.log('unknown message: ' + JSON.stringify(message));
@@ -189,9 +205,10 @@ export class Room {
     }
 
     onPlayerDisconnect(player: Player) {
+        
         this.timerActive = false;
         const [currPlayer, otherPlayer] = this.getPlayers(player);
-        currPlayer.socket.emit('message', { state: 'gameover', description: `${otherPlayer.name || "Unknown player"} disconnected` });
+        otherPlayer.socket.emit('message', { state: 'gameover', description: `${otherPlayer.name || "Unknown player"} disconnected` });
         this.cleanup();
     }
 }

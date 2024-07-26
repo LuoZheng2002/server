@@ -1,7 +1,8 @@
 import { Socket } from "socket.io";
-import { Room } from "./room";
+import { Room } from "./room.js";
 
 export class Player{
+    static waitingPlayer: Player| null = null;
     socket: Socket;
     name: string | null;
     room: Room | null;
