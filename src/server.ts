@@ -8,8 +8,10 @@ import { assert } from "console";
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
+    path: "/socket.io",
     cors: {
-        origin: "*"
+        origin: "*",
+        methods: ["GET", "POST"]
     }
 });
 
